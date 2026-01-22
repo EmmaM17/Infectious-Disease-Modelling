@@ -1,0 +1,56 @@
+---
+title: 'Unit 1: Introduction to R'
+author: "Emma McEvoy"
+date: "2026-01-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+
+## Open dataset and save to variable ##
+
+```{r open}
+london_firstwave <- read_csv("firstwave_London-1.csv")
+london_firstwave
+```
+## 1. Rename the columns ##
+
+```{r rename}
+london_firstwave <- london_firstwave %>% rename(newCases = newCasesBySpecimenDate, cumCases = cumCasesBySpecimenDate, firstEpisode = newFirstEpisodesBySpecimenDate, cumFirstEpisode = cumFirstEpisodesBySpecimenDate,newReinfections = newReinfectionsBySpecimenDate,cumReinfections= cumReinfectionsBySpecimenDate)
+london_firstwave
+```
+## 2. Check that the columns containing "FirstEpisode" data are equal to your newCases and cumCases columns ##
+```{r equal}
+#new <- london_firstwave %>%filter(newCases==firstEpisode) 
+new <- london_firstwave %>%filter(cumCases==cumFirstEpisode)
+new
+```
+Filtering by firstEpisode returns 61 rows which is the original table length so none are missing/ different.
+
+## 3. Check that columns containing "Reinfections" data are empty##
+```{r empty}
+london_firstwave %>% select(newReinfections, cumReinfections)
+```
+## 4. Remove columns from data
+```{r remove}
+london_firstwave <- london_firstwave %>% select(date, newCases, cumCases)
+london_firstwave
+```
+## 5. Sort data
+```{r sortNewCases}
+sortByNewCases <- london_firstwave %>% arrange(newCases)
+sortByNewCases
+```
+```{r sortDate}
+sortByDate <- london_firstwave %>% arrange(newCases)
+sortByDate
+```
+## 6. Filter to only days where "newCases" is greater than 50##
+```{r filter}
+over50 <- london_firstwave %>% filter(newCases>50)
+over50
+```
