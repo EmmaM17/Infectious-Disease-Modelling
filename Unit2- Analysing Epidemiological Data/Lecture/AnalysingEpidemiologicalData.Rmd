@@ -1,0 +1,80 @@
+---
+title: "Unit 2: Analysing Epidemiological Data"
+output: html_document
+date: 
+---
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(incidence)
+library(EpiEstim)
+```
+
+# Import the data
+```{r importData}
+case_data <- read_csv("firstwave_London.csv")
+case_data
+```
+
+# Reverse data
+```{r reverse}
+case_data <- case_data %>% map_df(rev)
+case_data
+```
+
+# Using Incidence function
+```{r incidence}
+i <- case_data$date %>% incidence()
+i
+```
+As the number of cases on a given date are stored under the variable 'newCasesBySpecimenDate' this function incorrectly assumes there's only one case per day. 
+
+# Replacing the counts with newCaseBySpecimenDate column data
+```{r fix}
+i$counts <- case_data %>% select(newCasesBySpecimenDate) %>% as.matrix()
+i$n <- case_data %>% select(newCasesBySpecimenDate) %>% sum()
+plot(i)
+```
+
+#Filtering dates
+```{r dates1}
+i_early <- i[1:20]
+i_early
+plot(i_early)
+```
+This filters to show the 1st 20 dates using square brackets. The alternative way to do this is by using specific date ranges and the subset function.
+```{r dates2}
+i_mid <- subset(i, from = as.Date("2020-02-25"), to = as.Date("2020-03-10"))
+i_mid
+plot(i_mid)
+```
+
+# Estimate the growth rate
+
+```{r fit}
+my_fit <- fit(i)
+my_fit
+```
+
+This also gives us our 95% confidence interval. We can also split the data into before and after a specified date to get estimates of the different growth rates.
+```{r split}
+split_fit <- fit(i, split = as.Date("2020-03-01"))
+split_fit
+```
+
+# Using EpiEstim to predict R number
+```{r serial}
+s_interval <- make_config(
+  mean_si = 12.0,
+  std_si = 5.2
+)
+```
+
+This provides a mean and standard deviation for the serial interval. We use this as the input function for estimate_R()
+
+```{r Re}
+my_R <- estimate_R(i, method= "parametric_si", config = s_interval)
+plot(my_R)
+my_R$R
+```

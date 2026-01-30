@@ -1,0 +1,63 @@
+---
+title: "Pre-Seminar-Task"
+date: "2026-01-28"
+output: html_document
+---
+
+```{r setup, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(incidence)
+library(EpiEstim)
+```
+
+# Change the Serial Interval Mean and STD and compare
+```{r importData, echo = FALSE}
+case_data <- read_csv("firstwave_London.csv")
+case_data
+```
+```{r reverse, echo = FALSE}
+case_data <- case_data %>% map_df(rev)
+case_data
+```
+```{r incidence, echo = FALSE}
+i <- case_data$date %>% incidence()
+i
+```
+```{r fix, echo = FALSE}
+i$counts <- case_data %>% select(newCasesBySpecimenDate) %>% as.matrix()
+i$n <- case_data %>% select(newCasesBySpecimenDate) %>% sum()
+```
+
+## Before
+```{r serial}
+s_interval <- make_config(
+  mean_si = 12.0,
+  std_si = 5.2
+)
+```
+```{r Re}
+my_R <- estimate_R(i, method= "parametric_si", config = s_interval)
+plot(my_R)
+my_R$R
+```
+## Updating Mean and STD
+```{r NEWserial}
+new_s_interval <- make_config(
+  mean_si = 6.0,
+  std_si = 3.5 
+)
+```
+```{r NEWRe}
+new_my_R <- estimate_R(i, method= "parametric_si", config = new_s_interval)
+plot(new_my_R)
+new_my_R$R
+```
+
+By setting the mean to 6 and STD to 3.5, we can estimate the R number for the earlier date ranges as it now has enough data. Comparing the mean R value where the start date is 6 and end is 12, the new settings return a value which is around a third that of the original (9.2 vs 3.2). The same pattern applies to the STD and quantiles.
+
+Changing the settings has no impact on the epidemic curve and the number of incidence.
+
+When the mean and std is updated to 6 and 3.5, the SI distribution graph's frequency peaks around day 4 which is significantly earlier than with the previous mean and std as it peaked around day 10.
+
+The estimated R graph for the previous settings show a significant spike around the 2nd week of March, where the mean R number increases to 25. In comparison the new settings had a less drastic spike where the mean increased to 6. This difference is significant as the greater a R number is from 1 suggests the epidemic is growing a greater rate.
