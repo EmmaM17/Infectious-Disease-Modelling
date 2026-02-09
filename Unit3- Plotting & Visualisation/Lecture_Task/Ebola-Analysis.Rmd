@@ -1,0 +1,106 @@
+---
+title: "Ebola Analysis and Plotting"
+Author: 'Emma McEvoy'
+date: "2026-02-04"
+output: html_document
+---
+
+```{r setup, include= FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(outbreaks)
+library(incidence)
+library(EpiEstim)
+```
+# Plotting with the incidence package
+```{r load}
+onset <- outbreaks::ebola_sim$linelist$date_of_onset
+
+i <- incidence(onset)
+plot(i)
+```
+
+# Change appearance
+```{r apperance}
+plot(i, color= 'lavender',alpha = 0.8, xlab='Date case reported')
+```
+# Add breaks on x-axis
+```{r breaks}
+plot(i, color= 'gold',alpha = 0.9, xlab='Date case reported', n_breaks= 10)
+```
+# Weekly incidence
+```{r weeekly}
+i_week <- incidence(onset, interval = 7) #weekly incidence
+plot(i_week)
+plot(i_week, labels_week = FALSE)
+```
+```{r fit}
+my_fit <- fit(i)
+plot(i, fit= my_fit)
+```
+The entire graph doesn't have exponential growth, it has exponential decay/decline about half way through the displayed period. Hence the fit is off. To solve this the split function should be used.
+
+```{r splitfit}
+split_fit <- fit(i, split = as.Date("2014-12-15"))
+plot(i, fit= split_fit)
+```
+
+Using optim_fit_split, the optimal average fit for before and after can be found. (Selects best date)
+```{r optimfit}
+optim_split <- fit_optim_split(i)
+optim_split
+optim_split$split
+```
+```{r plotoptimfit}
+optim_fit <- optim_split$fit
+plot(i, fit = optim_fit)
+```
+
+# Plotting with epiEstim
+```{r serial}
+s_interval <- make_config(
+  mean_si= 15.3,
+  std_si= 9.3
+)
+```
+
+```{r Re}
+my_R <-estimate_R(i, method="parametric_", config = s_interval)
+plot(my_R)
+```
+```{r plots}
+plot(my_R, what= "R", legend = TRUE,
+     options_R = list(col="red", xlab= "Date"))
+```
+
+# Using ggplot()
+```{r tibble}
+sex <- outbreaks::ebola_sim$linelist$gender
+cases <- tibble(onset= onset, sex= sex)
+cases
+```
+
+```{r histogram}
+g <- cases %>% ggplot(aes(x= onset, fill = sex)) + geom_histogram()
+g
+```
+
+# Add labels
+```{r labels}
+g <- g + labs(title = "Histogram of onset dates", x = "Dates")
+g
+```
+
+# Change colours
+```{r color}
+g <- g + scale_fill_manual(values = c('pink','skyblue')) +
+  theme_minimal(base_size = 16)
+g
+```
+
+# Add legend
+```{r legend}
+g <- g + scale_fill_manual(values = c('pink','skyblue'),
+  labels = c('Female', 'Male'))
+g
+```

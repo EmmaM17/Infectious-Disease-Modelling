@@ -1,0 +1,187 @@
+---
+title: "Week 3 Pair Coding: Plotting"
+author: "Emma Davis"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(incidence)
+library(EpiEstim)
+```
+
+### Processing the data
+
+This will initially follow the steps from Week 2's Pair Coding.
+
+First we import the data and assign it to an object, which we call `case_data`. I'm using `readRDS()` rather than `read_csv()` because the data in this instance is saved as an RData file (extension .RDS) containing only a vector of dates.
+
+```{r import, echo=FALSE}
+case_data <- readRDS('casedates_London.RDS')
+```
+
+Next we used the `incidence` package to convert our data into an `incidence` variable.
+
+```{r incidence}
+i <- case_data %>% incidence()
+```
+
+I've chosen to subset this data to approximately the first wave of the epidemic, but you could choose any interval you like for this exercise.
+
+```{r firstwave}
+firstwave <- subset(i, to = as.Date("2020-06-03"))
+```
+
+Next we used `EpiEstim` to estimate the effective R number.
+
+To estimate the R number we need to have some knowledge of the distribution of either the serial interval (onset to onset) or the generation interval (infection to infection). The `EpiEstim` package has a function `estimate_R()` that uses the serial interval and incidence data to estimate the real-time value of the effective R number.
+
+First we need to configure the serial interval distribution settings for this calculation, using the `make_config()` function, by providing a mean and a standard deviation for the serial interval.
+
+```{r serial}
+s_interval <- make_config(
+  mean_si = 12.0,
+  std_si = 5.2
+)
+```
+
+Then we can use this with the `EpiEstim` function `estimate_R()` to get estimates of the effective reproduction number.
+
+```{r estimate}
+first_R <- estimate_R(firstwave, method="parametric_si", config=s_interval)
+```
+
+### Plotting
+
+For plotting, first of all we want to access and format the data provided when we used `EpiEstim` to estimate our R-values. We do this using the `$` symbol to select a component of our output from the `estimate_R()` function.
+
+```{r gettingR}
+Rs <- as_tibble(first_R$R)
+Rs
+```
+
+Next we relabel our column names with more sensible alternatives (R interprets anything with brackets as being a function, so column names such as "Mean(R)" can make things tricky).
+
+```{r renamecolumns}
+Rs <- Rs %>% rename(meanR = `Mean(R)`,
+                    stdR = `Std(R)`,
+                    quant_025 = `Quantile.0.025(R)`,
+                    quant_05 = `Quantile.0.05(R)`,
+                    quant_25 = `Quantile.0.25(R)`,
+                    quant_75 = `Quantile.0.75(R)`,
+                    quant_95 = `Quantile.0.95(R)`,
+                    quant_975 = `Quantile.0.975(R)`,
+                    medianR = `Median(R)`)
+Rs
+```
+
+We also create a new columns: `dates` - using the `dates` component of our `estimate_R()` output to get the date associated with `t_end`. We use `t_end` because the estimated value of $R$ is only available at the end of the estimation window.
+
+```{r newcolumns}
+Rs <- Rs %>% mutate(dates = first_R$dates[t_end])
+
+Rs
+```
+
+
+#### Task 1: Plot and compare
+
+a. Draw a simple line plot of the mean estimated value of R using `ggplot()` and `geom_line()`. Assign your plot to an object called `fig1` so you can modify/add to it later on.
+b. Plot the EpiEstim output - recall this is achieved using `plot(first_R, what = "R")`. Compare and check it matches your plot from a. 
+
+```{r simpleplot}
+fig1 <- Rs %>% ggplot(aes(x= dates, y= meanR)) + geom_line()
+fig1
+plot(first_R, what = "R")
+```
+
+#### Quantifying uncertainty
+
+We also want to include an idea of the error in our estimated R values. We can use `geom_errorbar()` for discrete errorbars (i.e. for each value of R on each date) or `geom_ribbon()` to create a shaded region, like in `EpiEstim`. Both of these geometries take values of `y_max` and `y_min` in place of `y` inside their aesthetics.
+
+In `EpiEstim` the plot includes 95% credible intervals (given in this instance by the 2.5% and 97.5% quantiles labeled `quant_025` and `quant975`). 
+
+#### Task 2: Plotting uncertainty
+Plot your `fig1` with uncertainty (using the 2.5% and 97.5% quantiles) represented by
+
+a. Discrete errorbars
+b. A continuous shaded region
+
+```{r errors}
+fig2 <- fig1 + geom_errorbar(aes(min = quant_025, max= quant_975))
+fig2
+fig3 <- fig1 + geom_ribbon(aes(min = quant_025, max= quant_975, fill = 'red',alpha = 0.3))
+fig3
+```
+
+Credible intervals are a more intuitive option when compared to the commonly-used concept of confidence intervals. Compare the definitions below:
+
+1. Credible Intervals: A credible interval is the interval within which a parameter will fall with a particular probability, i.e. given this data, there is 95% probability R will be inside the 95% credible interval at any particular point in time.
+
+2. Confidence Intervals: A confidence interval is an interval that has 95% probability of containing the true value of the parameter, i.e. if we calculated the confidence interval many times from similar data, 95% of confidence intervals calculated would contain the true value of R.
+
+We can compare these two methods by plotting them both on the same graph, using the following equations for the confidence intervals:
+
+lower 95% CI $=$ mean$(R)-1.96$std$(R)$
+
+upper 95% CI $=$ mean$(R)+1.96$std$(R)$
+
+#### Task 3: Comparing credible and confidence intervals
+
+Using these equations and your existing columns, add two `geom_ribbon()` elements to your `fig1` in different colours - one for the credible interval (in red) and one for the confidence interval (in blue).
+
+Hint 1: Try using the above equations inside the `aes()` argument of `geom_ribbon()`, applied to column names from `Rs`. 
+
+Hint 2: You can use the arguments `fill` and `alpha` inside your `geom_ribbon` to specify colour and transparency, e.g. `fill = "red"` or `alpha = 0.3`.
+
+```{r intervals}
+fig4 <- fig1 + geom_ribbon(aes(min = quant_025, max= quant_975, fill = 'red',alpha = 0.3)) +
+  geom_ribbon(aes(min = meanR -1.96 * stdR , max= meanR +1.96 * stdR, fill = 'blue',alpha = 0.3)) 
+
+fig4
+```
+
+In the second graph, we see that the red and blue regions are mostly overlapping, with the credible interval (red) being slightly higher than the confidence interval (blue) early in the epidemic. We also notice that the blue interval dips below zero, which is because we didn't limit the possible values to being $\geq 0$. Using `alpha` to create transparency mean's it's possible to see the overlap between the two regions ($0=$ fully transparent, $1=$ fully opaque).
+
+Next we want to tidy this plot up a bit; currently the axis labels are simply the column names (`meanR` and `dates`), which are reasonably informative but not in an appropriate format. The year is also absent and there aren't many values along the $x$ axis, plus it would be useful to have a reference line for $R=1$.
+
+#### Task 4: Tidying it up
+
+a. Create a new plot object `fig2` by adding a shaded region representing the 95% quantiles.
+b. Add x and y axis labels using `labs()`.
+c. Add a dashed line at $R=1$ using `geom_line()` with `aes(x = dates, y = 1)` and `lty = 2` (`lty` is an argument that gives different line types - try playing with different values to see what you get).
+d. Add `scale_x_date(date_breaks = "3 weeks", date_labels = "%d %b %y")` to reformat the x axis.
+
+```{r tidying}
+fig5 <- fig4 + labs(x= '2020', y= 'Mean R') +
+  geom_line(aes(x = dates, y = 1),lty = 3) +
+  scale_x_date(date_breaks = "3 weeks", date_labels = "%d %b %y")
+fig5
+
+```
+
+Notice the use of `y = 1` inside `geom_line()` when adding a line at $R=1$. This works because if you provide a single value for `y` then it will simply repeat that value for the length of the provided `x` values.
+
+Finally, we can make it pretty! In the next task, I've included a custom colour palette that is colorblind-friendly. I'd recommend using this, or similar, whenever you want to plot multiple things on the same graph. For this we're only plotting one outcome (estimated R), so it's not hugely important, but good to get into the practice.
+
+#### Task 5: Jazz it up!
+
+Use any combination of `ggplot2` elements to make it pretty. You can add colour or a title, play with themes, etc. Check the `ggplot2` Cheat Sheet for ideas!
+
+In my version, I've added a title and used `theme_minimal()`, which is one of my favourite themes because it looks very clean and tidy, but feel free to experiment!
+
+```{r makeitpretty}
+# A colorblind-friendly palette:
+my_fig <- fig1 +
+  geom_ribbon(aes(ymin = quant_025, ymax = quant_975),fill = "blue",alpha = 0.4) +
+  geom_ribbon(aes(ymin = meanR - 1.96 * stdR, ymax = meanR + 1.96 * stdR), fill = "gold", alpha = 0.4) +
+  scale_x_date(date_breaks = "1 weeks", date_labels = "%d %b %y") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  labs(title = "Credible Intervals vs Confidence Intervals for Mean R", x = "2020 Dates", y = "Mean R") +
+  labels = c('Female', 'Male')
+
+my_fig
+
+```
