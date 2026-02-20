@@ -36,16 +36,7 @@ $\Delta R=\gamma I$
 Say that we have $\beta=0.3$ and $\gamma=0.2$ (i.e. the average duration of infectiousness is $1/\gamma=5$), then we first need to define our parameters in R using the combine function `c()`, which takes individual values and turns them into a vector. 
 
 ```{r params}
-parameters <- c(beta = 0.2, gamma = 0.5, mu = 1/(70*365)) 
-```
-
-We can also write this across multiple lines if our line of code gets too long:
-
-```{r params2}
-parameters <- c(beta = 0.5, 
-                gamma = 0.2,
-                mu = 1/(70*365)) 
-parameters
+parameters <- c(beta = 0.3, gamma = 0.3, mu = 1/(70*365)) 
 ```
 
 #### Step 2: Define your initial values
@@ -164,7 +155,7 @@ df %>% mutate(compartment = fct_relevel(compartment,
         labs(x = "time (days)",
              y = "proportion",
              title = "The SIR model",
-             subtitle = "beta = 0.2, gamma = 0.5",
+             subtitle = "beta = 0.3, gamma = 0.3",
              color = "",
              linetype = "")
 ```
