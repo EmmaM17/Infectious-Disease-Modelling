@@ -39,15 +39,6 @@ Say that we have $\beta=0.3$ and $\gamma=0.2$ (i.e. the average duration of infe
 parameters <- c(beta = 0.2, gamma = 0.5, mu = 1/(70*365)) 
 ```
 
-We can also write this across multiple lines if our line of code gets too long:
-
-```{r params2}
-parameters <- c(beta = 0.5, 
-                gamma = 0.2,
-                mu = 1/(70*365)) 
-parameters
-```
-
 #### Step 2: Define your initial values
 
 Next we want to define what the values of $S$, $I$ and $R$ are at the start of our time frame. Because they are proportions, they must take values between 0 and 1.
