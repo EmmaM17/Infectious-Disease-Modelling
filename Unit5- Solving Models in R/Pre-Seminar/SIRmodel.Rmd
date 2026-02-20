@@ -164,7 +164,7 @@ df %>% mutate(compartment = fct_relevel(compartment,
         labs(x = "time (days)",
              y = "proportion",
              title = "The SIR model",
-             subtitle = "beta = 0.3, gamma = 0.2",
+             subtitle = "beta = 0.5, gamma = 0.2",
              color = "",
              linetype = "")
 ```
