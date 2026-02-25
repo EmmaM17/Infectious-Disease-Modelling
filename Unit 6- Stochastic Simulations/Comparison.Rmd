@@ -1,0 +1,269 @@
+---
+title: "Unit 6: Pre-Seminar Task"
+subtitle: "Compare Stochastic and Deterministic Models"
+author: "Emma Davis"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(adaptivetau)
+library(deSolve)
+```
+
+Recall that the SIR model rate of change equations are given by:
+
+$\Delta S = -\frac{\beta S I}{N}$
+
+$\Delta I = \frac{\beta S I}{N} - \gamma I$
+
+$\Delta R = \gamma I$
+
+### The Stochastic Model
+
+#### 1. Define transitions
+
+First we have to define the transitions. There are two events that can happen:
+
+1. A susceptible individual can become infected: $-1$ from $S$, $+1$ to $I$.
+2. An infected individual can recover: $-1$ from $I$, $+1$ to $R$.
+
+We write this as a **list** of two vectors, where each vector represents one type of event.
+
+```{r transitions}
+transitions <- list(c(S = -1, I = +1), # infection
+                    c(I = -1, R = +1)) # recovery
+```
+
+#### 2. Set parameters
+
+Next we set the parameters and initial values of $S$, $I$, and $R$. Parameters need to be defined as a **list** and initial values as a **vector**.
+
+```{r params_sto}
+params_sto <- list(beta = 0.5,
+                   gamma = 0.2)
+
+initial_sto <- c(S = 9999,
+                 I = 1,
+                 R = 0)
+```
+
+#### 3. Define rates
+
+Next, we define a function that calculates the rates at which our two events happen -- in the same order as we defined our transitions.
+
+```{r rates}
+SIRrates <- function(x, params, t){
+  N <- x["S"]+x["I"]+x["R"] # total population size
+  c(params$beta*x["S"]*x["I"]/N, # rate of infection
+    params$gamma*x["I"]) # rate of recovery
+  }
+```
+
+#### 4. Run the simulations
+
+We use a `for` loop to iterate through `n` simulations, adding the outputs to `all_outs`, setting our random seed to allow reproducibility.
+
+```{r runsims}
+set.seed(20230301)
+n <- 1000 # number of simulations to run
+
+all_outs <- tibble(time = c(),  # create an empty tibble to store outputs
+                   S = c(), 
+                   I = c(),
+                   R = c(), 
+                   sim = c())
+
+# for each simulation 1 to n
+for(i in 1:n){
+  # run the adaptive tau function, generating a single simulation output
+  out <- ssa.adaptivetau(initial_sto,  # vector of initial conditions
+                         transitions,  # list of possible transitions
+                         SIRrates,     # function to calculate transition rates
+                         params_sto,   # list of model parameters
+                         tf = 100)     # time frame (days)
+  
+  out <- as_tibble(out) %>% mutate(sim = i) # label simulation number
+  all_outs <- rbind(all_outs, out) # bind new simulation onto outputs
+}
+
+stochastic <- all_outs # relabel (optional, but useful for clarity)
+```
+
+#### 5. Plotting
+
+We can plot all simulations by grouping by `sim` and using `geom_line`, for each of $S$, $I$, and $R$. Argument `alpha` represents transparency (0 = fully transparent, 1 = fully opaque).
+
+```{r plotI}
+all_outs %>% ggplot(aes(x = time, y = I, 
+                        group = sim)) + geom_line(alpha = 0.05)
+```
+
+### The Deterministic Model
+
+#### 1. Set parameters
+
+We set our parameters as a **vector** using the `c()` function for combining values. These parameters want to be the same as the ones in our stochastic model.
+
+```{r params}
+params_det <- c(beta = 0.5, 
+                gamma = 0.2) 
+```
+
+#### 2. Define your initial values
+
+For ease of comparison we're going to look at $S$, $I$ and $R$ as numbers of people, rather than proportions, so $S+I+R=10000$.
+
+```{r initial}
+initial_det <- c(S = 9999,
+                 I = 1,
+                 R = 0)
+```
+
+#### 3. Write your model as a function
+
+Now we take our rate of change equations and write them as a function, remembering to include $N$ as we're considering numbers of people.
+
+```{r model}
+SIRmodel <- function(t, state, parameters){
+  with(as.list(c(state, parameters)),{
+    
+    N <- S+I+R # total population size
+    
+    # Rate of change equations
+    dS <- -beta*S*I/N
+    dI <- beta*S*I/N - gamma*I
+    dR <- gamma*I
+    
+    # Combine rates of change into a list
+    list(c(dS, dI, dR))
+  })
+}
+```
+
+#### 4. Pick your time intervals
+
+Now we define how long we want to run the model for and how frequently (at what intervals) we want to save the values of $S$, $I$ and $R$. We ran the stochastic model for 100 days, so we'll do the same here.
+
+```{r times}
+times <- seq(0, 100, by = 1)
+```
+
+#### 5. Run the model
+
+Now we have all the components we need, we can run the model using the `ode()` function from `deSolve`.
+
+```{r run}
+out_det <- ode(y = initial_det,
+               times = times,
+               func = SIRmodel,
+               parms = params_det)
+
+out_det <- as_tibble(out_det)
+```
+
+#### 6. Plotting
+
+We can plot our deterministic outbreak using `ggplot()`. To use ggplot in the way it's intended, we first want to reformat our data using `gather()`. This will help us plot $S$, $I$ and $R$ on the same plot. Using `fct_relevel` (factor relevel) ensures R won't default to alphabetical order when processing the variable.
+
+**Activity: Try commenting out lines 177-178 before running the next code chunk and observe the ordering of the legend and the allocation of colours.**
+
+```{r gather}
+deterministic <- out_det %>% gather(key = compartment, 
+                                    value = value, 
+                                    c("S", "I", "R")) %>%
+  mutate(compartment = fct_relevel(compartment, 
+                                   "S", "I", "R"))
+deterministic 
+```
+
+Then we can 
+
+```{r plot}
+deterministic  %>%
+            ggplot(aes(x = time, y = value, group = compartment)) +
+            geom_line(aes(color = compartment,
+                          linetype = compartment),
+                          linewidth = 1) +
+            scale_color_manual(values = c("darkgreen",
+                                          "darkred",
+                                          "darkgrey")) +
+            theme_minimal(base_size = 12) +
+            labs(x = "time (days)",
+                 y = "proportion",
+                 title = "The SIR model",
+                 subtitle = "beta = 0.3, gamma = 0.2",
+                 color = "",
+                 linetype = "")
+```
+
+### Comparing the models
+
+#### Combine results
+
+We want to combine the results into one tibble. At the moment our two output tibbles are in different formats:
+
++ `stochastic` has columns: `time`, `S`, `I`, `R` and `sim`.
++ `deterministic` has columns: `time`, `compartment`, `value`.
+
+So we need to use `gather()` to reformat our `stochastic` tibble, add a `sim` column to `deterministic` (this will just = 1001 because deterministic models only need to be run once and the first 1000 sims are stochastic) and add a column indicating whether a simulation is stochastic or deterministic.
+
+```{r combining}
+stochastic <- stochastic %>% gather(key = compartment, 
+                                    value = value,
+                                    c("S", "I", "R")) %>%
+                             mutate(model = "stochastic")
+
+deterministic <- deterministic %>% mutate(sim = 1001,
+                                          model = "deterministic")
+
+combined <- rbind(stochastic, deterministic) %>%
+            mutate(compartment = fct_relevel(compartment,
+                                             "S", "I", "R"))
+```
+
+Now we can plot both models and compare. We use `interaction()` when telling `ggplot` which factors to group by so that we can group by simulation number and compartment type. Using `alpha = model` and setting a manual scale for `alpha`, gives a solid line for the deterministic model and semi-transparent lines for the stochastic model runs.
+
+```{r compare}
+combined %>% ggplot(aes(x = time, y = value, 
+                        group = interaction(sim, compartment))) +
+             geom_line(aes(alpha = model, color = compartment)) +
+             scale_alpha_manual(values = c(1, 0.01), 
+                                guide = "none") +
+             scale_color_manual(values = c("darkgreen",
+                                          "darkred",
+                                          "darkgrey")) +
+             theme_minimal(base_size = 12) +
+             labs(x = "time (days)",
+                  y = "number of people",
+                  title = "The SIR model",
+                  subtitle = "beta = 0.3, gamma = 0.2",
+                  color = "")
+```
+
+**Activity 2: What proportion of simulations don't result in an outbreak?**
+
+Plot the stochastic simulations again and notice that the solid red line is below the horizontal line representing $I=20$.
+
+```{r threshold}
+stochastic %>% filter(compartment == "I") %>%
+  ggplot(aes(x = time, y = value, group = sim)) +
+  geom_line(alpha = 0.05, color = "darkred") +
+  geom_hline(aes(yintercept = 20), lty = 2) +
+  theme_minimal()
+  
+```
+
+Using $I=20$ as a threshold for whether an outbreak will take-off, work out what proportion of simulations result in an outbreak:
++ Filter `stochastic` to 
+  ++ only rows representing infectious values (`compartment == "I"`)
+  ++ number of individuals (`value`) >20
++ Select column `sim`
++ Count the number of unique simulation numbers (using function `unique()` or otherwise)
++ Divide by the total number of simulations, `n`
+
+```{r outbreaks}
+
+```
