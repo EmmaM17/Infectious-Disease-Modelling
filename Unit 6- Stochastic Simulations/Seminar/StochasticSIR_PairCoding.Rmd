@@ -1,0 +1,161 @@
+---
+title: "Stochastic SIR model"
+author: "Emma Davis"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(adaptivetau)
+```
+
+### Running stochastic simulations
+
+We will be using the `adaptivetau` package to run stochastic simulations for the SIR model. When we use numerical solvers for continuous-time systems they approximate the solution using discrete time-steps. If these time-steps are too big, then we may get large errors in our estimations that increase over time throughout the simulation, but if they are too small, then the simulations will take a very long time to run. The package `adaptivetau` uses variable time-steps, which are chosen to minimise error and run time.
+
+The steps for using this are:
+
+* Define all possible events/transitions that can occur
+* Set up your parameters and initial values
+* Define the rates that each transition occurs
+* Decide how many times you want to run the simulation
+* Use `ssa.adaptivetau()` to run the simulations, making sure to store the outputs
+
+Once you have run the simulations, you can then do analysis on the outputs.
+
+#### Define transitions
+
+First we have to define the transitions. Recall that the SIR model rate of change equations are given by:
+
+$\Delta S = -\frac{\beta S I}{N}$
+
+$\Delta I = \frac{\beta S I}{N} - \gamma I$
+
+$\Delta R = \gamma I$
+
+There are two events that can happen:
+
+1. A susceptible individual can become infected: $-1$ from $S$, $+1$ to $I$.
+2. An infected individual can recover: $-1$ from $I$, $+1$ to $R$.
+
+We need to write this as a list of two vectors, where each vector represents one type of event.
+
+```{r transitions}
+transitions <- list(c(S = -1, I = +1), # infection
+                    c(I = -1, R = +1)) # recovery
+transitions
+```
+
+#### Set parameters
+
+Now we want to set out parameter values and initial values for our compartments $S$, $I$, and $R$. For example, say we have $\beta=0.5$ and $\gamma=0.2$ (so $R_0=\beta/\gamma=2.5$) and $S+I+N=1000$, with no recovered/immune individuals and only one infected case.
+
+```{r params}
+params <- list(beta = 0.5, gamma = 0.2)
+init_vals <- c(S = 9999, I = 1, R = 0)
+```
+
+#### Define rates
+
+Next, we define a function that calculates the rates at which our two events happen -- in the same order as we defined our transitions.
+
+```{r rates}
+SIRrates <- function(x, params, t){
+  N <- x["S"]+x["I"]+x["R"] # total population size
+  c(params$beta*x["S"]*x["I"]/N, # rate of infection
+    params$gamma*x["I"]) # rate of recovery
+  }
+```
+
+#### Run a single simulation
+
+We can now use our initial values, transitions, rates function and parameters to run a single simulation, which represents one possible outcome. The argument `tf` represents the time frame, or the number of days, to run the simulation for.
+
+The output is a data frame with a column for time (in days since the first infection), and the associated values of $S$, $I$, and $R$.
+
+```{r onesim}
+out <- ssa.adaptivetau(init_vals, transitions,
+                        SIRrates, params, tf = 100)
+out <- as_tibble(out)
+out
+```
+
+#### Plot the simulation
+
+We can use `ggplot2` to visualise the simulated epidemic.
+
+```{r pressure}
+out %>% ggplot(aes(x = time, y = I)) + geom_line() + ylim(c(0,10000))
+```
+
+#### Run multiple simulations
+
+One simulation isn't enough to get an idea of the range of possible outcomes, so we now want to run multiple simulations using a `for` loop. 
+
+First we need to decide the number of simulations we would like to run, which we've called `n`, and then we need to create an empty tibble in the format of the output of our simulation, `all_outs`, with an additional column for `sim` -- representing the simulation number. Then we iterate through `n` simulations, adding the outputs to `all_outs`. 
+
+```{r nsim}
+n <- 1000 # number of simulations to run
+
+all_outs <- tibble(time = c(), S = c(), I = c(), 
+                  R = c(), sim = c())
+
+for(i in 1:n){
+  out <- ssa.adaptivetau(init_vals, transitions,
+                        SIRrates, params, tf = 100)
+  out <- as_tibble(out) %>% mutate(sim = i)
+  all_outs <- rbind(all_outs, out)
+}
+
+```
+
+#### Plotting the simulation outputs
+
+We can plot all simulations by grouping by `sim` and using `geom_line`, for each of $S$, $I$, and $R$.
+
+```{r I}
+all_outs %>% ggplot(aes(x = time, y = I, 
+                        group = sim)) + geom_line(alpha = 0.1)
+```
+
+```{r S}
+all_outs %>% ggplot(aes(x = time, y = S, 
+                        group = sim)) + geom_line(alpha=0.1)
+```
+
+```{r R}
+all_outs %>% ggplot(aes(x = time, y = R, 
+                        group = sim)) + geom_line(alpha=0.1)
+```
+
+#### Summarising the simulation outputs
+
+We may be interested in the `mean` or `average` scenario. To do this we can use the functions `quantiles()` and `means()`, defined in SummarisingSims.Rmd. The input to these functions is the tibble containing our stochastic simulation outputs. Remember that you will need to first run the code chunks containing these functions for R to be able to recognise and use them.
+
+**Task 1:** Use `means()` to calculate the mean number of infected people across the timeframe of the simulations and observe the format of the output.
+
+```{r means}
+# your code here
+```
+
+**Task 2:** Plot the disease prevalence over time (remember prevalence = number infected / population size).
+
+```{r prevalence}
+# your code here
+```
+
+**Task 3:** Use `quantiles()` to calculate the 25%, 50% and 75% quantiles of the number of infected people over time.
+
+```{r quantiles}
+# your code here
+```
+
+**Task 4:** Use `gather()` with arguments `key = quant`, `value = value` and `c("lwr", "median", "upr")` to reformat your output from Task 3, then plot the 25%, 50% and 75% quantiles of the number of infected people over time either:
+a) As three separate lines or 
+b) Using `+ geom_ribbon()` to include the upper and lower quantile range as a shaded region
+
+```{r quantplot}
+# your code here
+```

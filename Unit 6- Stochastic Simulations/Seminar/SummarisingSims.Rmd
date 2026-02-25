@@ -1,0 +1,51 @@
+---
+title: "Summarising Simulations"
+author: "Emma Davis"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+#### Function for calculating quantiles
+
+```{r calculateQuantiles}
+quantiles <- function(x, lower = 0.25, upper = 0.75) {
+  require(magrittr)
+  days <- x %>% select(time) %>% tail(n = 1) %>% as_vector()
+  x %>% 
+    dplyr::bind_rows() %>% 
+    dplyr::select(time, I) %>%
+    dplyr::mutate(time = cut(time, ... = 0:ceiling(max(time)),
+                             include.lowest = TRUE,
+                             breaks = 0:days)) %>% 
+    dplyr::group_by(time) %>% 
+    dplyr::summarise(list(tibble::enframe(quantile(I, c(lower, 0.5, upper)), "probs", "quantile"))) %>% 
+    tidyr::unnest(cols = `list(...)`) %>% 
+    tidyr::spread(probs, quantile) %>% 
+    setNames(c("window", "lwr", "median", "upr")) %>%
+    mutate(time = 1:days)
+}
+```
+
+#### Function for calculating means
+
+```{r calculateMeans}
+means <- function(x) {
+  require(magrittr)
+  days <- x %>% select(time) %>% tail(n = 1) %>% as_vector()
+  x %>% 
+    dplyr::bind_rows() %>% 
+    dplyr::select(time, I) %>%
+    dplyr::mutate(time = cut(time, ... = 0:ceiling(max(time)),
+                             include.lowest = TRUE,
+                             breaks = 0:days)) %>% 
+    dplyr::group_by(time) %>% 
+    dplyr::summarise(mean(I)) %>%
+    setNames(c("window", "mean")) %>%
+    mutate(time = 1:days)
+}
+```
