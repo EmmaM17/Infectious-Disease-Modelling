@@ -46,3 +46,12 @@ my_R <- estimate_R(i, method= "parametric_si", config = s_interval)
 plot(my_R)
 my_R$R
 ```
+
+```{r importData, echo = FALSE}
+case_data <- read_csv("ukhsa-chart-download.csv")
+case_data
+```
+```{r incidence2, echo = FALSE}
+i <- case_data$date %>% incidence()
+i
+```

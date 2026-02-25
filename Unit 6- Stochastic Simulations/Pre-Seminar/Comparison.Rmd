@@ -199,6 +199,8 @@ deterministic  %>%
                  linetype = "")
 ```
 
+Commenting out the mutate line 177-178 impacts the infection rate as it now reaches its peak just under 2500 before dropping off again.
+
 ### Comparing the models
 
 #### Combine results
