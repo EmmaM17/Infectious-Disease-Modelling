@@ -138,12 +138,20 @@ We may be interested in the `mean` or `average` scenario. To do this we can use 
 
 ```{r means}
 # your code here
+meanInfected <- means(all_outs)
+meanInfected
 ```
 
 **Task 2:** Plot the disease prevalence over time (remember prevalence = number infected / population size).
 
 ```{r prevalence}
 # your code here
+prevalence <- meanInfected
+prevalence$mean <- meanInfected$mean / n
+prevalence
+
+#prevFig <- ggplot(aes(x = time, y = prevalence)) + geom_line(alpha=0.1)
+#prevFig
 ```
 
 **Task 3:** Use `quantiles()` to calculate the 25%, 50% and 75% quantiles of the number of infected people over time.
