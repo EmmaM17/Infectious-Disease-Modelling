@@ -1,0 +1,316 @@
+---
+title: "Stochastic SIR model"
+author: "Emma Davis"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(adaptivetau)
+```
+
+### Running stochastic simulations
+
+We will be using the `adaptivetau` package to run stochastic simulations for the SIR model, as previously described and implemented in the StochasticSIR project covered in Week 6.
+
+Recall, the steps for running simulations:
+
+* Define all possible events/transitions that can occur
+* Set up your parameters and initial values
+* Define the rates that each transition occurs
+* Decide how many times you want to run the simulation
+* Use `ssa.adaptivetau()` to run the simulations, making sure to store the outputs
+
+We used a `for` loop to iterate through a number of simulations, running `ssa.adaptivetau()` each time for some time frame of length `tf` days.
+
+#### Including interventions: change in parameters
+
+Including interventions involves a change some component of the model: either a change in parameters (e.g. a reduction in $\beta$) or a change in model structure (e.g. an additional recovery rate due to treatment). In this example, we are going to focus on an example where a lockdown is introduced at a given time, such that the baseline value of $\beta_0$ is reduced by a proportion $\rho$ during lockdown, i.e. $\beta=(1-\rho)\beta_0$.
+
+#### Define transitions
+
+First we have to define the transitions. If we include our expression for the scaled transmisson rate, $\beta=(1-\rho)\beta_0$, in the SIR model, then the rate of change equations are given by:
+
+$\Delta S = -\frac{(1-\rho)\beta_0 S I}{N}$
+
+$\Delta I = \frac{(1-\rho)\beta_0 S I}{N} - \gamma I$
+
+$\Delta R = \gamma I$
+
+There are two events that can happen:
+
+1. A susceptible individual can become infected: $-1$ from $S$, $+1$ to $I$.
+2. An infected individual can recover: $-1$ from $I$, $+1$ to $R$.
+
+We need to write this as a list of two vectors, where each vector represents one type of event.
+
+```{r transitions}
+transitions <- list(c(S = -1, I = +1), # infection
+                    c(I = -1, R = +1)) # recovery
+```
+
+#### Set parameters
+
+Now we want to set out parameter values and initial values for our compartments $S$, $I$, and $R$. For example, say we have $\beta_0=0.5$ and $\gamma=0.2=1/5$ (so $R_0=\beta_0/\gamma=2.5$ and infectiousness lasts on average 5 days) and $S+I+R=N=10000$, with no recovered/immune individuals and only one infected case. 
+
+We assume that there are no control measures at the point the disease is first introduced to the population, so there is initially no reduction in $\beta$ due to lockdown: i.e. $\rho=0$.
+
+```{r params}
+params <- list(beta = 0.5, 
+               gamma = 0.2, 
+               rho = 0)
+
+init_vals <- c(S = 9999, 
+               I = 1, 
+               R = 0)
+```
+
+#### Define rates
+
+Next, we define a function that calculates the rates at which our two events happen -- in the same order as we defined our transitions. We need to make sure to include the expression $(1-\rho)\beta_0$ in the place of $\beta$ here.
+
+```{r rates}
+SIRrates <- function(x, params, t){
+  N <- x["S"]+x["I"]+x["R"] # total population size
+  c((1-params$rho)*params$beta*x["S"]*x["I"]/N, # rate of infection
+    params$gamma*x["I"]) # rate of recovery
+  }
+```
+
+#### Set up lockdown details
+
+To simulate a lockdown, we need to know two things:
+
+1. How much transmission is going to be reduced (scaling factor).
+2. When (and for how long) we want the lockdown to last.
+
+Let's say that we believe lockdown could reduce contacts by approximately 75%, i.e. $\rho=0.75$ (reference: https://doi.org/10.1371/journal.pmed.1003907 ) and we want to implement lockdown three weeks after the start of the epidemic.
+
+We therefore need a set of parameters for during lockdown, which is the same as our initial `params`, but with $\rho=0.75$.
+
+```{r lockdown}
+time_to_lockdown <- 21 # number of days from start of epidemic to lockdown
+params_lockdown <- list(beta = 0.5, 
+                        gamma = 0.2, 
+                        rho = 0.75) # 75% reduction
+```
+
+#### Run simulations
+We define the number of simulations to run, `n`, our output tibble, `all_outs`
+
+```{r nsim}
+n <- 1000 # number of simulations to run
+
+all_outs <- tibble(time = c(), 
+                   S = c(), 
+                   I = c(), 
+                   R = c(), 
+                   sim = c())
+```
+
+Now, when we run each individual simulation, we want to run the model for the first 21 days (=`time_to_lockdown`) with our baseline parameters (`params`), then run it for some length of time (say 100 days) under lockdown conditions (i.e. using `params_lockdown`).
+
+We also need to be careful to make sure that for the second run, we update the initial values of $S$, $I$ and $R$ to the ending values in the pre-lockdown part of the simulation.
+
+```{r sims}
+set.seed(42) # so our results are reproducible
+
+for(i in 1:n){
+  
+  # Run for pre-lockdown, i.e. up to time_to_lockdown
+  out_pre <- ssa.adaptivetau(init_vals, 
+                             transitions,
+                             SIRrates, 
+                             params, 
+                             tf = time_to_lockdown)
+  out_pre <- as_tibble(out_pre) # convert to tibble
+  
+  # Get new initial values (tail-end of S, I and R from pre-lockdown sim)
+  SIR_vals <- out_pre %>% select(S, I, R) %>% tail(n=1) %>% as_vector()
+  
+  # Run for lockdown
+  out_post <- ssa.adaptivetau(SIR_vals, # instead of init_vals
+                              transitions,
+                              SIRrates, 
+                              params_lockdown, # lockdown parameters
+                              tf = 100)
+  
+  # "time" column will have started again from zero, so need to fix
+  out_post <- as_tibble(out_post) %>% 
+              mutate(time = time + time_to_lockdown)
+  
+  # combine pre- and post-lockdown outputs, index by simulation number
+  out <- rbind(out_pre,out_post) %>% mutate(sim = i)
+  
+  # add to full outputs tibble
+  all_outs <- rbind(all_outs, out)
+}
+
+```
+
+
+#### Plotting the simulation outputs
+
+We can plot all simulations by grouping by `sim` and using `geom_line`, for each of $S$, $I$, and $R$.
+
+```{r I}
+all_outs %>% ggplot(aes(x = time, y = I, 
+                        group = sim)) + geom_line(alpha = 0.1)
+```
+
+```{r S}
+all_outs %>% ggplot(aes(x = time, y = S, 
+                        group = sim)) + geom_line(alpha=0.1)
+```
+
+```{r R}
+all_outs %>% ggplot(aes(x = time, y = R, 
+                        group = sim)) + geom_line(alpha=0.1)
+```
+
+#### Analysing the simulation outputs
+
+For the standard SIR model, we created a function that checked whether a simulation was an outbreak or not. This was easy because we could set a high threshold since the only two scenarios were outbreak (peak much higher than 1000 cases) or no outbreak (die out fairly early), evidenced by the gap between the dark line along 0 and the outbreak curves.
+
+Now we need to be more careful because we don't have this separation, so now instead of asking if we get above a particular threshold, we'll instead check whether any people are still infected at the start of when we would have implemented lockdown.
+
+Note: This function is for a *single* simulation - we'll implement applying it to all simulation outputs later on.
+
+```{r outbreaks}
+is_outbreak <- function(I, time, lockdown = time_to_lockdown){
+  Is <- tibble(I, time) # create tibble
+  
+  # select the last value of I at the time of lockdown:
+  at_lockdown <- Is %>% filter(time <= time_to_lockdown) %>% 
+                  select(I) %>% tail(n = 1)
+  
+  at_lockdown > 0 # check > 0 
+}
+```
+
+**Task 1:** Create a function that checks whether the disease goes extinct ($I=0$) before the end of the simulation, using `tail(I, n=1)` to find the last value of $I$ for a single simulation.
+
+Estimated number of additional lines needed: 1
+
+```{r extinction}
+is_extinct <- function(I){
+  # your function here
+}
+```
+
+Then we used the `is_outbreak()` function to count the total number of outbreaks to get an estimate of outbreak risk (or the proportion of simulations that result in an outbreak).
+
+```{r countoutbreaks}
+total_outbreaks <- all_outs %>% group_by(sim) %>% 
+                   summarise(outbreak = is_outbreak(I,time)) %>%
+                   select(outbreak) %>%
+                   sum()
+
+outbreak_risk <- total_outbreaks/n
+```
+
+**Task 2:** Using a similar method, and your `is_extinct()` function, find the total number of outbreaks where the disease goes extinct, and therefore calculate the extinction rate by dividing this number by the number of simulations, `n`.
+
+Estimated number of additional lines needed: 5-6
+
+```{r extinctionrate}
+# your code here
+```
+
+We also used our `is_outbreak()` function to find which simulations were outbreaks, then to filter our outputs to just the simulations that resulted in outbreaks. 
+
+```{r findoutbreaks}
+outbreaks <- all_outs %>% group_by(sim) %>% 
+             summarise(outbreak = is_outbreak(I,time)) %>%
+             filter(outbreak == TRUE) %>%
+             select(sim) %>%
+             as_vector()
+
+only_outbreaks <- all_outs %>% filter(sim %in% outbreaks)
+```
+
+If we assume that lockdown is only needed in the case of an outbreak, then to investigate the effects of lockdown, it also makes sense to filter our outputs to just the simulations that resulted in outbreaks, so from now on we will do our analysis using `only_outbreaks`.
+
+**Task 3:** Repeat the previous calculation of extinction rate from Task 2 using just the simulations that resulted in outbreaks.
+
+Estimated number of additional lines needed: 5-6
+
+```{r outbreakextinction}
+# your code here
+```
+
+We were previously interested in the peak (or maximum) value of $I$ -- so the maximum number of people infected at any given time in a simulation -- and the timing of this peak. To make this analysis easier, we defined two new functions, `find_peak()` and `find_peak_t()`:
+
+```{r findpeak}
+find_peak <- function(I){
+  max(I)
+}
+
+find_peak_t <- function(I,time){
+  time[which(I == max(I))]
+}
+```
+
+We may now be interested in other metrics, such as the number of infected individuals at the start of lockdown, or the time taken from the start of lockdown to extinction.
+
+**Task 4:** Write a function that finds the number of infected individuals at the start of lockdown for a single simulation, i.e. at time = `time_to_lockdown`. This will need to a be function of $I$ and time -- which represents the time of lockdown.
+
+Estimated number of additional lines needed: 1
+
+```{r lockdownI}
+infections_at_lockdown <- function(I, time){
+  # your code here
+}
+```
+
+We used our `find_peak()` function to summarise the height of peak infections across the simulations:
+
+```{r peak}
+peaks <- only_outbreaks %>% group_by(sim) %>% 
+             summarise(peak = find_peak(I))
+
+peaks %>% ggplot(aes(x=peak)) + geom_histogram()
+mean(peaks$peak)
+range(peaks$peak)
+```
+
+**Task 5:** Using a similar method, find the mean number of infections at the start of lockdown and plot the range of values as a histogram.
+
+Estimated number of additional lines needed: 6-10
+
+```{r extinct}
+# your code here
+```
+
+We may also want to filter our outputs further, to just include simulations that resulted in outbreaks, and successfully went extinct due to lockdown, so that we can consider how quickly extinction occurred -- i.e. at what point we would have safely been able to lift lockdown without risking further outbreaks.
+
+**Task 6:** Using a similar method to the above code chunk `findoutbreaks`, filter `only_outbreaks` to just simulations that went extinct.
+
+Estimated number of additional lines needed: 4-6
+
+```{r findextinctions}
+# your code here
+```
+
+**Task 7:** Write a function that finds the time taken from the start of lockdown to extinction ($I=0$) for a single simulation. If the simulation doesn't go extinct then return `NA`. 
+
+Estimated number of additional lines needed: 8-12
+
+```{r extinctiontime}
+extinction_time <- function(I, time){
+  # your code here
+}
+```
+
+**Task 8:** Use a similar method to code chunk `peak` and Task 5 to summarise and plot the total time spent in lockdown before extinction in simulations where extinction occurred. (Hint: You'll need to take into account that total time = time until lockdown + time spent in lockdown).
+
+Estimated number of additional lines needed: 10-15
+
+```{r extinctionanalysis}
+
+
+```
+
+
