@@ -1,0 +1,155 @@
+---
+title: "Fitting a model to endemic prevalence"
+author: "Emma Davis"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(deSolve)
+```
+
+### The SEIR model for influenza
+
+The SEIR model separates a population into compartments:
+
+* $S$: Susceptible
+* $E$: Exposed (not yet infectious)
+* $I$: Infectious
+* $R$: Recovered/Removed
+
+If we assume that recovered people have impermanent immunity, then the rate of change equations (using proportions rather than number of people) are given by:
+
+$\Delta S=\theta R - \beta SI$
+
+$\Delta E=\beta SI-\alpha E$
+
+$\Delta I=\alpha E-\gamma I$
+
+$\Delta R=\gamma I - \theta R$
+
+#### Setting up the model
+
+Now let's write the model function:
+
+```{r model}
+SEIRmodel <- function(t, state, parameters){
+  with(as.list(c(state, parameters)),{
+    
+    # Rate of change equations
+    dS <- theta*R - beta*S*I
+    dE <- beta*S*I - alpha*E
+    dI <- alpha*E - gamma*I
+    dR <- gamma*I - theta*R
+    
+    # Combine rates of change into a list
+    list(c(dS, dE, dI, dR))
+  })
+}
+```
+
+For flu, let's assume we know that the mean incubation period is 2 days, $\alpha = 1/2$, and the mean infectious period is around 5 days, $\gamma = 1/5$. Let's say we also know that immunity from previous infection lasts around half a year, so 180 days, so let's set $\theta = 1/180$. The only parameter we need to fit is $\beta$.
+
+In terms of data, imagine we have data on influenza prevalence in a population suggesting a prevalence of around 2%, which was obtained by a random sample of the entire population. However, we don't know how many individuals might be exposed or recovered and immune, so instead of starting at "current levels", we can start with a small introduction of infection and then run the model for a burn in period until $I$ (the prevalence) stabilizes at a consistent level.
+
+Let's setup our initial values and parameters that we're going to keep fixed.
+
+```{r params}
+prev_data <- 0.02 # constant endemic prevalence of 2%
+
+fixed_params <- c(alpha = 0.5,
+                  gamma = 0.2,
+                  theta = 1/180) 
+
+initial_values <- c(S = 1 - 0.0001,
+                    E = 0.0001, # start with some exposed cases
+                    I = 0, 
+                    R = 0)
+```
+
+#### Pick time period
+
+To pick the time period, we're going to want to see roughly how long it takes for the value of $I$ to stabilize. Let's start by trying a period of 10 years (3650 days), but there's no need to output daily values, so we'll reduce this to every 10 days.
+
+```{r period}
+times <- seq(0, 3650, by = 10)
+```
+
+Now we need to run the model for an example value of $\beta$ and observe how long it takes to stabilize. Seeing as waning immunity doesn't impact $R_0$ (in an initial outbreak we assumed no recovered cases) and neither does the incubation period, we have $R_0=\beta/\gamma$ and want this to be greater than $1$ to allow endemic disease to occur, i.e. $\beta>0.2$. Let's try $\beta=0.5$ and play around until we get roughly 2% prevalence ($I=0.02$).
+
+```{r run_burnin}
+parameters <- c(beta = 0.8, fixed_params)
+out <- as_tibble(ode(y = initial_values,
+                     times = times,
+                     func = SEIRmodel,
+                     parms = parameters))
+tail(out)
+```
+
+Looking at the end of this, we see that the values of $S$, $E$, $I$ and $R$ have stabilized. We can also plot the output to see how quickly this happened.
+
+```{r plot_burnin}
+out %>% ggplot(aes(x = time/365, y = I)) + geom_line() +
+        xlab("time (years)") +
+        ylab("prevalence") +
+        theme_minimal()
+```
+
+#### Fitting
+
+Now we want to write a function that takes in a value of $\beta$ and then outputs the distance between the equilibrium value of $I$ and our data estimate of prevalence.
+
+```{r distance}
+calc_dist <- function(beta, params, inits, dat){
+  parameters <- c(beta = beta, params)
+  out <- as_tibble(ode(y = inits,
+                     times = times,
+                     func = SEIRmodel,
+                     parms = parameters))
+  I <- out %>% tail(n = 1) %>% select(I) %>% as_vector()
+  abs(I-dat) # absolute value = make sure positive difference
+}
+```
+
+Then we can use built in function `optimise()` to minimise this distance and find the optimal value of $\beta$ for some reasonable guess of upper and lower bounds.
+
+```{r fit}
+fit_beta <- optimise(calc_dist,
+                     lower = 0.5,
+                     upper = 1.5,
+                     params = fixed_params,
+                     inits = initial_values,
+                     dat = prev_data)
+fit_beta
+```
+#### Validate fit
+
+Let's now plot the model with this value of $\beta$ for 10 years and check it looks sensible.
+
+```{r validate}
+parameters <- c(beta = fit_beta$minimum, fixed_params)
+times <- seq(0, 3650, by = 10)
+
+out <- as_tibble(ode(y = initial_values,
+                     times = times,
+                     func = SEIRmodel,
+                     parms = parameters))
+
+out %>% ggplot() +
+  geom_line(aes(x = time/365, y = I)) +
+  geom_line(aes(x = time/365, y = prev_data), 
+            color = "red",
+            lty = 2) +
+  xlab("time (years)") +
+  ylab("prevalence") +
+  theme_minimal()
+```
+
+So now we can take the final outputs of the model as our starting values for $S$, $E$, $I$, and $R$ in our endemic scenario with constant prevalence, and then predict what will happen if we introduce a new intervention, e.g. a vaccine.
+
+```{r initialvals}
+out %>% tail(n = 1)
+```
+
