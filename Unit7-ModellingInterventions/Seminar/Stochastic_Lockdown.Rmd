@@ -197,6 +197,8 @@ Estimated number of additional lines needed: 1
 ```{r extinction}
 is_extinct <- function(I){
   # your function here
+   return(tail(I, n= 1) == 0)
+ 
 }
 ```
 
@@ -217,6 +219,12 @@ Estimated number of additional lines needed: 5-6
 
 ```{r extinctionrate}
 # your code here
+total_extinction<- all_outs %>% group_by(sim) %>% 
+                   summarise(outbreak = is_extinct(I)) %>%
+                   select(outbreak) %>%
+                   sum()
+extinction <- total_extinction / n
+extinction
 ```
 
 We also used our `is_outbreak()` function to find which simulations were outbreaks, then to filter our outputs to just the simulations that resulted in outbreaks. 
@@ -239,6 +247,13 @@ Estimated number of additional lines needed: 5-6
 
 ```{r outbreakextinction}
 # your code here
+total_extinction2<- all_outs %>% group_by(sim) %>% 
+                   summarise(only_outbreaks = is_extinct(I)) %>%
+                   select(only_outbreaks) %>%
+                   sum()
+extinction2 <- total_extinction2 / n
+extinction2
+
 ```
 
 We were previously interested in the peak (or maximum) value of $I$ -- so the maximum number of people infected at any given time in a simulation -- and the timing of this peak. To make this analysis easier, we defined two new functions, `find_peak()` and `find_peak_t()`:
