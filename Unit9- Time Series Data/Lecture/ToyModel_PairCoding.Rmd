@@ -1,0 +1,141 @@
+---
+title: "Fitting a deterministic SIR model to toy data"
+author: "Emma Davis"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(deSolve)
+library(adaptivetau)
+```
+
+#### The Data
+
+The prevalence data in `SimulatedOutbreak.RDS` has been generated using an $SIR$ model with certain values of the transmission rate $\beta$ and recovery rate $\gamma$, simulating an outbreak of a novel disease in a population of size $N=10000$.
+
+```{r popsize}
+N <- 10000
+```
+
+$\Delta S = -\frac{\beta I S}{N}$
+$\Delta I = \frac{\beta S I}{N} - \gamma I$
+$\Delta R = \gamma I$
+
+We recall that the basic reproduction number, $R_0$, for the $SIR$ model is given by: $$R_0=\frac{\beta}{\gamma}$$
+
+**Task 1:** Load the data using `readRDS(file = "filename.RDS")` and
+
+a. Plot the number of active cases ($I$) over time
+
+Number of lines of code required: 1
+
+```{r Task1a}
+# outbreak_data <- ??
+```
+
+b. What is the peak prevalence? When does this occur?
+
+Number of lines of code required: 2
+
+```{r Task1b}
+# your code here
+```
+
+c. How long does it take until the end of the epidemic (0 cases)?
+
+Number of lines of code required: 1-2
+
+```{r Task1c}
+# your code here
+```
+
+Next, we want to fit the $SIR$ model to the data to estimate values of $\beta$ and $\gamma$.
+
+**Task 2**: Write a function for calculating the $SIR$ model rate of change equations (without births or deaths).
+
+Number of lines of code required: 5
+
+```{r SIRmodel}
+SIR <- function(t, state, parameters){
+  with(as.list(c(state, parameters)),{
+    
+    # Calculate N
+    
+    
+    # Rate of change equations
+    
+    
+    # Combine rates of change into a list
+    
+  })
+}
+```
+
+
+**Task 3**: Write a function for calculating the sum of the squared errors for your model function for inputs `params` and `data`.
+
+Hint: the output of your function is the item on the last line (so long as it isn't assigned to an object name).
+
+Number of lines of code required: 6-8
+
+```{r sse_SIR}
+sse_SIR <- function(params, data){
+  
+  cases <- data %>% select(cases) %>% as_vector() %>% as.integer()
+  
+  # Pick model timesteps, t (to match the data)
+  
+  # Create a vector of named parameters (using input params)
+  
+  # Set your initial conditions, using the first element of cases, cases[1]
+  
+  # Use ode() to solve your model with these parameters, timesteps
+  # and initial conditions, then save it as a tibble.
+  
+  # Calculate the sum of the squared errors
+  
+}
+```
+
+**Task 4:** Using `optim()`, fit your model to the data to find parameter estimates for $\beta$ and $\gamma$
+
+Number of lines of code required: 3-6
+
+```{r fit}
+# Your code here
+```
+
+**Task 5:** Repeat Task 4 with your fitted outputs as your new starting values to double check convergence.
+
+Number of lines of code required: 3-6
+
+```{r checkfit}
+# Your code here
+```
+
+**Task 6:** Run your model with the fitted parameter values.
+
+Number of lines of code required: 6-9
+
+```{r run}
+
+# initial conditions (vector with named entries, from data)
+
+# parameters (vector with named entries, from 2nd fit)
+
+# output times (want these to match the data observations)
+
+# Use ode() to solve your model with these parameters, timesteps
+# and initial conditions, then save it as a tibble.
+```
+
+**Task 7:** Plot your model and the data on the same figure. For the model, calculate the peak prevalence and when it occurs -- compare this to your results from Task 1b.
+
+Number of lines of code required: 2-4
+
+```{r plot}
+# Your code here
+```
